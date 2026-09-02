@@ -4,41 +4,50 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Models\PengaturanBonus; // Pastikan Model PengaturanBonus sudah ada
+use Illuminate\Support\Facades\Auth;
 
-class SettingBonusController extends Controller
+class AuthController extends Controller
 {
-    // GET /api/v1/pengaturan-bonus
-    public function index()
+    public function login(Request $request)
     {
-        $setting = PengaturanBonus::first();
+        $credentials = $request->validate([
+            'username' => 'required|string',
+            'password' => 'required|string',
+        ]);
+
+        if (!Auth::attempt($credentials)) {
+            return response()->json([
+                'status'  => 'error',
+                'message' => 'Invalid credentials'
+            ], 401);
+        }
+
+        $user  = Auth::user();
+        $token = $user->createToken('auth_token')->plainTextToken;
+
         return response()->json([
-            'status' => 'success',
-            'data'   => $setting
+            'status'       => 'success',
+            'access_token' => $token,
+            'token_type'   => 'Bearer',
+            'user'         => $user
         ]);
     }
 
-    // PUT /api/v1/pengaturan-bonus
-    public function update(Request $request)
+    public function me(Request $request)
     {
-        $validated = $request->validate([
-            'bonus_per_artikel' => 'nullable|numeric',
-            'bonus_per_views'   => 'nullable|numeric',
-            'min_views'         => 'nullable|integer',
+        return response()->json([
+            'status' => 'success',
+            'data'   => $request->user()
         ]);
+    }
 
-        $setting = PengaturanBonus::first();
-
-        if (!$setting) {
-            $setting = PengaturanBonus::create($validated);
-        } else {
-            $setting->update($validated);
-        }
+    public function logout(Request $request)
+    {
+        $request->user()->currentAccessToken()->delete();
 
         return response()->json([
             'status'  => 'success',
-            'message' => 'Pengaturan bonus berhasil diperbarui',
-            'data'    => $setting
+            'message' => 'Logged out successfully'
         ]);
     }
 }
