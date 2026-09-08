@@ -3,15 +3,17 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\Admin\HealthCheckController;
+use App\Http\Controllers\Api\V1\Admin\AuthController;
+use App\Http\Controllers\Api\V1\Admin\SettingBonusController;
+use App\Http\Controllers\Api\V1\KategoriController;
+use App\Http\Controllers\Api\V1\WartawanController;
+use App\Http\Controllers\Api\V1\ArtikelController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
 Route::get('/v1/admin/health-check', [HealthCheckController::class, 'index']);
-
-use App\Http\Controllers\Api\V1\Admin\AuthController;
-use App\Http\Controllers\Api\V1\Admin\SettingBonusController;
 
 Route::prefix('v1')->group(function () {
 
@@ -25,11 +27,26 @@ Route::prefix('v1')->group(function () {
         Route::get('/me', [AuthController::class, 'me']);
         Route::post('/logout', [AuthController::class, 'logout']);
 
-        // Pengaturan Bonus
+        // Pengaturan Bonus (Dev 1)
         Route::prefix('admin')->group(function () {
             Route::get('/pengaturan-bonus', [SettingBonusController::class, 'index']);
             Route::put('/pengaturan-bonus', [SettingBonusController::class, 'update']);
         });
+
+        // --- ROUTE DEV 2 (DATA MODULE) ---
+
+        // Kategori Berita (GET Only)
+        Route::get('/kategori', [KategoriController::class, 'index']);
+        Route::get('/kategori/{id}', [KategoriController::class, 'show']);
+
+        // Wartawan (GET Only)
+        Route::get('/wartawan', [WartawanController::class, 'index']);
+        Route::get('/wartawan/{id}', [WartawanController::class, 'show']);
+
+        // Artikel (GET + Patch Keterangan)
+        Route::get('/artikel', [ArtikelController::class, 'index']);
+        Route::get('/artikel/{id}', [ArtikelController::class, 'show']);
+        Route::patch('/artikel/{id}/keterangan', [ArtikelController::class, 'updateKeterangan']);
 
     });
 

@@ -28,6 +28,12 @@ class Artikel extends Model
         'last_synced_at' => 'datetime',
     ];
 
+    /*
+    |--------------------------------------------------------------------------
+    | Relasi Database
+    |--------------------------------------------------------------------------
+    */
+
     public function kategori()
     {
         return $this->belongsTo(KategoriBerita::class, 'kategori_id');
@@ -41,5 +47,35 @@ class Artikel extends Model
     public function bonus()
     {
         return $this->hasMany(Bonus::class, 'artikel_id');
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Scope Query (Penambahan Baru)
+    |--------------------------------------------------------------------------
+    */
+
+    // Filter pencarian berdasarkan judul artikel
+    public function scopeSearch($query, $keyword)
+    {
+        return $query->when($keyword, function ($q) use ($keyword) {
+            $q->where('judul', 'like', '%' . $keyword . '%');
+        });
+    }
+
+    // Filter berdasarkan kategori
+    public function scopeKategori($query, $kategoriId)
+    {
+        return $query->when($kategoriId, function ($q) use ($kategoriId) {
+            $q->where('kategori_id', $kategoriId);
+        });
+    }
+
+    // Filter berdasarkan rentang tanggal terbit
+    public function scopeFilterTanggal($query, $startDate, $endDate)
+    {
+        return $query->when($startDate && $endDate, function ($q) use ($startDate, $endDate) {
+            $q->whereBetween('tanggal_terbit', [$startDate, $endDate]);
+        });
     }
 }
