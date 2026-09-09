@@ -3,6 +3,13 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\Admin\HealthCheckController;
+use App\Http\Controllers\Api\V1\Admin\DashboardController;
+use App\Http\Controllers\Api\V1\Admin\BonusController;
+use App\Http\Controllers\Api\V1\Admin\ReportController;
+
+Route::get('/dashboard', [DashboardController::class, 'index']);
+Route::get('/bonus', [BonusController::class, 'index']);
+Route::get('/bonus/export', [ReportController::class, 'export']);
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -29,6 +36,10 @@ Route::prefix('v1')->group(function () {
         Route::prefix('admin')->group(function () {
             Route::get('/pengaturan-bonus', [SettingBonusController::class, 'index']);
             Route::put('/pengaturan-bonus', [SettingBonusController::class, 'update']);
+
+            Route::get('/dashboard', [DashboardController::class, 'index']);
+            Route::get('/bonus', [BonusController::class, 'index']);
+            Route::get('/bonus/export', [ReportController::class, 'export']);
         });
 
     });
