@@ -7,14 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class KategoriBerita extends Model
 {
-    use HasFactory;
-
     protected $table = 'kategori_berita';
-
-    protected $fillable = [
-        'nama_kategori',
-        'slug',
-    ];
+    protected $fillable = ['nama_kategori', 'slug'];
 
     public function artikel()
     {

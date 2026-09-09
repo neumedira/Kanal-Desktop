@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\V1\Admin\HealthCheckController;
+<<<<<<< HEAD
 use App\Http\Controllers\Api\V1\Admin\DashboardController;
 use App\Http\Controllers\Api\V1\Admin\BonusController;
 use App\Http\Controllers\Api\V1\Admin\ReportController;
@@ -10,15 +11,19 @@ use App\Http\Controllers\Api\V1\Admin\ReportController;
 Route::get('/dashboard', [DashboardController::class, 'index']);
 Route::get('/bonus', [BonusController::class, 'index']);
 Route::get('/bonus/export', [ReportController::class, 'export']);
+=======
+use App\Http\Controllers\Api\V1\Admin\AuthController;
+use App\Http\Controllers\Api\V1\Admin\SettingBonusController;
+use App\Http\Controllers\Api\V1\KategoriController;
+use App\Http\Controllers\Api\V1\WartawanController;
+use App\Http\Controllers\Api\V1\ArtikelController;
+>>>>>>> aad3a179c824c8fe2b8b1a552188f93aaf3601d8
 
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
 Route::get('/v1/admin/health-check', [HealthCheckController::class, 'index']);
-
-use App\Http\Controllers\Api\V1\Admin\AuthController;
-use App\Http\Controllers\Api\V1\Admin\SettingBonusController;
 
 Route::prefix('v1')->group(function () {
 
@@ -32,7 +37,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/me', [AuthController::class, 'me']);
         Route::post('/logout', [AuthController::class, 'logout']);
 
-        // Pengaturan Bonus
+        // Pengaturan Bonus (Dev 1)
         Route::prefix('admin')->group(function () {
             Route::get('/pengaturan-bonus', [SettingBonusController::class, 'index']);
             Route::put('/pengaturan-bonus', [SettingBonusController::class, 'update']);
@@ -41,6 +46,21 @@ Route::prefix('v1')->group(function () {
             Route::get('/bonus', [BonusController::class, 'index']);
             Route::get('/bonus/export', [ReportController::class, 'export']);
         });
+
+        // --- ROUTE DEV 2 (DATA MODULE) ---
+
+        // Kategori Berita (GET Only)
+        Route::get('/kategori', [KategoriController::class, 'index']);
+        Route::get('/kategori/{id}', [KategoriController::class, 'show']);
+
+        // Wartawan (GET Only)
+        Route::get('/wartawan', [WartawanController::class, 'index']);
+        Route::get('/wartawan/{id}', [WartawanController::class, 'show']);
+
+        // Artikel (GET + Patch Keterangan)
+        Route::get('/artikel', [ArtikelController::class, 'index']);
+        Route::get('/artikel/{id}', [ArtikelController::class, 'show']);
+        Route::patch('/artikel/{id}/keterangan', [ArtikelController::class, 'updateKeterangan']);
 
     });
 
