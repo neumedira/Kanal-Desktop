@@ -4,32 +4,56 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use App\Models\Artikel;
-use App\Models\Kategori;
+use App\Models\KategoriBerita;
 use App\Models\Wartawan;
 
 class WordPressSeeder extends Seeder
 {
     public function run(): void
     {
-        // 1. Ambil/buat data default kategori & wartawan agar Foreign Key tidak error
-        $kategori = Kategori::firstOrCreate(['nama_kategori' => 'Umum']);
-        $wartawan = Wartawan::firstOrCreate(['nama' => 'Redaksi Kanal']);
+        // Gunakan parameter ?_embed untuk menarik Penulis & Kategori secara bersamaan
+        $postsResponse = Http::get('https://kanalkalimantan.com/wp-json/wp/v2/posts?per_page=30&_embed');
 
-        // 2. Tembak REST API WordPress (Mengambil 15 berita terbaru)
-        $response = Http::get('https://kanalkalimantan.com/wp-json/wp/v2/posts?per_page=15');
-
-        if ($response->successful()) {
-            $posts = $response->json();
+        if ($postsResponse->successful()) {
             $count = 0;
+            foreach ($postsResponse->json() as $post) {
+                
+                // 1. Ambil Nama Wartawan/Penulis Asli
+                $authorName = 'Redaksi Kanal';
+                if (isset($post['_embedded']['author'][0]['name'])) {
+                    $authorName = $post['_embedded']['author'][0]['name'];
+                }
+                $wartawan = Wartawan::firstOrCreate(['nama' => $authorName]);
 
-            foreach ($posts as $post) {
-                // 3. Simpan atau perbarui data ke tabel artikels
+                // 2. Ambil Kategori Asli
+                $kategoriId = null;
+                if (isset($post['_embedded']['wp:term'][0][0])) {
+                    $wpCat = $post['_embedded']['wp:term'][0][0];
+                    $katModel = KategoriBerita::firstOrCreate(
+                        ['nama_kategori' => html_entity_decode($wpCat['name'])],
+                        ['slug' => $wpCat['slug']]
+                    );
+                    $kategoriId = $katModel->id;
+                }
+
+                // Fallback Kategori
+                if (!$kategoriId) {
+                    $katModel = KategoriBerita::firstOrCreate(
+                        ['nama_kategori' => 'Umum'],
+                        ['slug' => 'umum']
+                    );
+                    $kategoriId = $katModel->id;
+                }
+
+                // 3. Simpan Artikel
                 Artikel::updateOrCreate(
-                    ['link' => $post['link']], // Acuan unik agar data tidak duplikat
+                    ['link' => $post['link']],
                     [
+                        'wp_post_id'     => $post['id'],
                         'judul'          => html_entity_decode($post['title']['rendered']),
-                        'kategori_id'    => $kategori->id,
+                        'kategori_id'    => $kategoriId,
                         'wartawan_id'    => $wartawan->id,
                         'tanggal_terbit' => date('Y-m-d H:i:s', strtotime($post['date'])),
                         'keterangan'     => 'Import dari WordPress',
@@ -37,10 +61,7 @@ class WordPressSeeder extends Seeder
                 );
                 $count++;
             }
-
-            $this->command->info("Berhasil mengimpor {$count} berita dari WordPress!");
-        } else {
-            $this->command->error('Gagal mengambil data dari REST API WordPress.');
+            $this->command->info("Berhasil mengimpor {$count} artikel dengan kategori & penulis asli!");
         }
     }
 }
