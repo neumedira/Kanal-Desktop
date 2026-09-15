@@ -32,7 +32,7 @@
 
                 <!-- Kategori Dropdown -->
                 <div class="w-full md:w-56">
-                    <select id="kategoriFilter" onchange="handleStateChange()" 
+                    <select id="kategoriFilter" onchange="handleFilterChange()" 
                         class="w-full py-2 px-3 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500 outline-none transition bg-white">
                         <option value="">Semua Kategori</option>
                     </select>
@@ -40,26 +40,35 @@
 
                 <!-- Tanggal Dropdown (Hidden by default, muncul saat kategori dipilih) -->
                 <div class="w-full md:w-56 hidden" id="tanggalFilterContainer">
-    <div class="relative w-full">
-        <input type="date" id="tanggalFilter" onchange="handleStateChange()"
-            class="w-full py-2 px-3 text-sm text-gray-700 border border-gray-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500 outline-none transition bg-white"
-            title="Filter per tanggal">
-    </div>
-</div>
+                    <div class="relative w-full">
+                        <input type="date" id="tanggalFilter" onchange="handleFilterChange()"
+                            class="w-full py-2 px-3 text-sm text-gray-700 border border-gray-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500 outline-none transition bg-white"
+                            title="Filter per tanggal">
+                    </div>
+                </div>
             </div>
         </div>
 
         <!-- Dynamic Content Container -->
         <div class="bg-white rounded-b-lg shadow-sm border-x border-b border-gray-200 overflow-hidden">
+            
             <!-- Header List Kategori (Tampil di Awal) -->
             <div id="kategoriHeader" class="flex justify-between items-center bg-gray-50 p-4 border-b border-gray-200 text-sm font-semibold text-gray-600">
-                <div class="pl-10">Kategori</div>
+                <!-- [BARU] Tambah checkbox Select All Kategori -->
+                <div class="flex items-center gap-4 pl-4">
+                    <input type="checkbox" id="selectAllKategori" onclick="toggleSelectAll(this)" class="w-4 h-4 text-red-600 rounded border-gray-300 cursor-pointer">
+                    <span>Kategori</span>
+                </div>
                 <div>Jumlah Berita</div>
             </div>
 
             <!-- Header Hasil Pencarian Artikel (Tampil saat kategori dipilih) -->
-            <div id="artikelHeader" class="hidden bg-gray-50 p-4 border-b border-gray-200 text-sm font-bold text-gray-800">
-                Hasil Pencarian: <span id="labelKategoriAktif"></span>
+            <!-- [BARU] Tambah flex layout dan checkbox Select All Artikel -->
+            <div id="artikelHeader" class="hidden bg-gray-50 p-4 border-b border-gray-200 text-sm font-bold text-gray-800 flex justify-between items-center">
+                <div class="flex items-center gap-4 pl-4">
+                    <input type="checkbox" id="selectAllArtikel" onclick="toggleSelectAll(this)" class="w-4 h-4 text-red-600 rounded border-gray-300 cursor-pointer">
+                    <span>Hasil Pencarian: <span id="labelKategoriAktif"></span></span>
+                </div>
             </div>
 
             <!-- Render Data List -->
@@ -75,7 +84,8 @@
                     <!-- Pagination Buttons JS -->
                 </div>
 
-                <button class="bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2 rounded transition flex items-center gap-2 shadow-sm">
+                <!-- [BARU] Tambahkan id="btnExport" -->
+                <button id="btnExport" class="bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2 rounded transition flex items-center gap-2 shadow-sm">
                     <i class="fa-solid fa-download"></i> Export ke Excel
                 </button>
             </div>
@@ -90,18 +100,22 @@
 
         let searchTimeout = null;
         let currentPage = 1;
-        let allKategoriData = []; // Menyimpan data kategori untuk JS Pagination
+        let allKategoriData = []; 
+        
+        // [BARU] State Management untuk Checkbox dan Export
+        let selectedIds = [];
+        let currentMode = 'kategori'; // 'kategori' atau 'artikel'
 
         document.addEventListener('DOMContentLoaded', () => {
             initData();
+            setupExportButton(); // [BARU] Inisialisasi tombol export
         });
 
         async function initData() {
             await loadKategoriOptions();
-            handleStateChange(); // Tentukan tampilan awal
+            handleStateChange(1); 
         }
 
-        // 1. Ambil Data Kategori & Isi Dropdown
         async function loadKategoriOptions() {
             try {
                 const response = await fetch('/api/v1/kategori', {
@@ -127,7 +141,12 @@
             }
         }
 
-        // 2. State Manager: Tentukan Tampilan Kategori atau Artikel
+        // [BARU] Handler khusus saat dropdown filter berubah, agar state checklist di-reset
+        function handleFilterChange() {
+            selectedIds = []; // Reset pilihan saat ganti filter/kategori
+            handleStateChange(1);
+        }
+
         function handleStateChange(page = 1) {
             currentPage = page;
             const kategoriId = document.getElementById('kategoriFilter').value;
@@ -135,17 +154,27 @@
             const kategoriHeader = document.getElementById('kategoriHeader');
             const artikelHeader = document.getElementById('artikelHeader');
 
-            if (kategoriId === "") {
-                // STATE 1: Tampilkan List Kategori
+            const newMode = (kategoriId === "") ? 'kategori' : 'artikel';
+            
+            // [BARU] Reset selected ID jika mode berubah dari Kategori ke Artikel atau sebaliknya
+            if (currentMode !== newMode) {
+                selectedIds = [];
+                currentMode = newMode;
+            }
+
+            if (currentMode === 'kategori') {
                 tanggalContainer.classList.add('hidden');
                 artikelHeader.classList.add('hidden');
+                artikelHeader.classList.remove('flex'); // [BARU] styling adjust
                 kategoriHeader.classList.remove('hidden');
+                kategoriHeader.classList.add('flex'); // [BARU] styling adjust
                 renderKategoriList();
             } else {
-                // STATE 2: Tampilkan List Artikel
                 tanggalContainer.classList.remove('hidden');
                 kategoriHeader.classList.add('hidden');
+                kategoriHeader.classList.remove('flex'); // [BARU] styling adjust
                 artikelHeader.classList.remove('hidden');
+                artikelHeader.classList.add('flex'); // [BARU] styling adjust
                 
                 const select = document.getElementById('kategoriFilter');
                 document.getElementById('labelKategoriAktif').textContent = select.options[select.selectedIndex].text;
@@ -154,7 +183,6 @@
             }
         }
 
-        // 3. Render State 1: Tabel Kategori (Client-side Pagination)
         function renderKategoriList() {
             const container = document.getElementById('dataListContainer');
             const searchVal = document.getElementById('searchInput').value.toLowerCase();
@@ -164,7 +192,6 @@
                 filteredData = allKategoriData.filter(c => (c.nama_kategori || c.nama).toLowerCase().includes(searchVal));
             }
 
-            // Simple Pagination (5 per page)
             const perPage = 5;
             const total = filteredData.length;
             const lastPage = Math.ceil(total / perPage);
@@ -175,13 +202,17 @@
             if (paginatedData.length === 0) {
                 container.innerHTML = `<div class="p-8 text-center text-gray-500">Kategori tidak ditemukan.</div>`;
                 renderPagination({ current_page: 1, last_page: 1, total: 0, from: 0, to: 0 }, 'kategori');
+                checkMasterStatus(); // [BARU]
                 return;
             }
 
             container.innerHTML = paginatedData.map(item => `
                 <div class="flex items-center justify-between p-4 hover:bg-gray-50 transition border-b border-gray-100 last:border-b-0">
-                    <div class="flex items-center gap-4">
-                        <input type="checkbox" class="w-4 h-4 text-red-600 rounded border-gray-300">
+                    <div class="flex items-center gap-4 pl-4">
+                        <!-- [BARU] Checkbox Item Kategori -->
+                        <input type="checkbox" value="${item.id}" onclick="toggleSelection(${item.id})" 
+                            class="item-checkbox w-4 h-4 text-red-600 rounded border-gray-300 cursor-pointer"
+                            ${selectedIds.includes(item.id) ? 'checked' : ''}>
                         <span class="text-sm font-medium text-gray-800">${item.nama_kategori || item.nama}</span>
                     </div>
                     <div class="text-sm text-gray-500 mr-4">${item.artikel_count || 0}</div>
@@ -195,9 +226,10 @@
                 from: total ? start + 1 : 0, 
                 to: end > total ? total : end 
             }, 'kategori');
+
+            checkMasterStatus(); // [BARU] Perbarui status master checkbox
         }
 
-        // 4. Render State 2: Fetch & Tampilkan Artikel
         async function fetchArtikelList() {
             const container = document.getElementById('dataListContainer');
             const searchVal = document.getElementById('searchInput').value;
@@ -208,7 +240,7 @@
 
             let queryParams = new URLSearchParams({ page: currentPage, per_page: 5, kategori_id: kategoriId });
             if (searchVal) queryParams.append('search', searchVal);
-            if (tanggalVal) queryParams.append('tanggal', tanggalVal); // Parameter opsional jika backend support
+            if (tanggalVal) queryParams.append('tanggal', tanggalVal); 
 
             try {
                 const response = await fetch(`/api/v1/artikel?${queryParams.toString()}`, {
@@ -230,30 +262,28 @@
 
                             return `
                                 <div class="p-4 hover:bg-gray-50 transition border-b border-gray-100 last:border-b-0 flex justify-between items-start">
-                                    <div class="space-y-3 w-full pr-4">
-                                        <!-- Badge -->
+                                    <div class="space-y-3 w-full pl-4 pr-4">
                                         <span class="inline-block px-3 py-1 text-xs font-semibold text-blue-700 bg-blue-50 rounded border border-blue-200">
                                             ${namaKategori}
                                         </span>
-                                        
-                                        <!-- Judul & Link -->
                                         <div>
                                             <h2 class="text-base font-bold text-gray-900 leading-snug">${item.judul}</h2>
                                             <a href="${item.link}" target="_blank" class="text-xs text-blue-500 hover:underline flex items-center gap-1 mt-1">
                                                 <i class="fa-solid fa-link text-[10px]"></i> ${item.link}
                                             </a>
                                         </div>
-
-                                        <!-- Meta Bottom -->
                                         <div class="flex items-center justify-between text-xs text-gray-500 pt-2">
                                             <span class="flex items-center gap-1.5"><i class="fa-regular fa-user"></i> ${namaWartawan}</span>
                                             <span class="flex items-center gap-1.5 lg:hidden"><i class="fa-regular fa-calendar"></i> ${tgl}</span>
                                         </div>
                                     </div>
                                     
-                                    <!-- Right Area: Checkbox & Date Desktop -->
                                     <div class="flex flex-col items-end justify-between h-full space-y-12">
-                                        <input type="checkbox" class="w-5 h-5 text-red-600 rounded border-gray-300">
+                                        <!-- [BARU] Checkbox Item Artikel -->
+                                        <input type="checkbox" value="${item.id}" onclick="toggleSelection(${item.id})" 
+                                            class="item-checkbox w-5 h-5 text-red-600 rounded border-gray-300 cursor-pointer"
+                                            ${selectedIds.includes(item.id) ? 'checked' : ''}>
+                                            
                                         <span class="hidden lg:flex items-center gap-1.5 text-xs text-gray-500 whitespace-nowrap">
                                             <i class="fa-regular fa-calendar"></i> ${tgl}
                                         </span>
@@ -263,13 +293,13 @@
                         }).join('');
                     }
                     renderPagination(paginatedData, 'artikel');
+                    checkMasterStatus(); // [BARU] Perbarui status master checkbox
                 }
             } catch (error) {
                 container.innerHTML = `<div class="p-8 text-center text-red-500">Terjadi kesalahan koneksi server.</div>`;
             }
         }
 
-        // 5. Render Navigator Pagination
         function renderPagination(meta, mode) {
             const nav = document.getElementById('paginationNav');
             const info = document.getElementById('paginationInfo');
@@ -302,8 +332,91 @@
 
         function debounceSearch() {
             clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(() => { handleStateChange(1); }, 500);
+            searchTimeout = setTimeout(() => { 
+                selectedIds = []; // [BARU] Reset checklist jika user melakukan pencarian baru
+                handleStateChange(1); 
+            }, 500);
         }
+
+        /* =========================================
+           [BARU] LOGIKA CHECKBOX DAN EXPORT EXCEL
+           ========================================= */
+
+        // 1. Pilih / Hapus satu item
+        function toggleSelection(id) {
+            const index = selectedIds.indexOf(id);
+            if (index === -1) {
+                selectedIds.push(id);
+            } else {
+                selectedIds.splice(index, 1);
+            }
+            checkMasterStatus(); 
+        }
+
+        // 2. Pilih Semua (Select All) di halaman yang sedang aktif
+        function toggleSelectAll(masterCheckbox) {
+            const isChecked = masterCheckbox.checked;
+            const checkboxes = document.querySelectorAll('.item-checkbox');
+            
+            checkboxes.forEach(cb => {
+                cb.checked = isChecked;
+                const id = parseInt(cb.value);
+                const index = selectedIds.indexOf(id);
+                
+                if (isChecked && index === -1) {
+                    selectedIds.push(id);
+                } else if (!isChecked && index !== -1) {
+                    selectedIds.splice(index, 1);
+                }
+            });
+        }
+
+        // 3. Sinkronisasi status master checkbox berdasarkan item di halaman aktif
+        function checkMasterStatus() {
+            const checkboxes = document.querySelectorAll('.item-checkbox');
+            const masterKategori = document.getElementById('selectAllKategori');
+            const masterArtikel = document.getElementById('selectAllArtikel');
+            
+            if (checkboxes.length === 0) {
+                if(masterKategori) masterKategori.checked = false;
+                if(masterArtikel) masterArtikel.checked = false;
+                return;
+            }
+            
+            const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+            
+            if (currentMode === 'kategori' && masterKategori) {
+                masterKategori.checked = allChecked;
+            } else if (currentMode === 'artikel' && masterArtikel) {
+                masterArtikel.checked = allChecked;
+            }
+        }
+
+        // 4. Setup Tombol Export
+        function setupExportButton() {
+            document.getElementById('btnExport').addEventListener('click', () => {
+                if (selectedIds.length === 0) {
+                    alert('Silakan pilih minimal satu data untuk diekspor!');
+                    return;
+                }
+
+                if(confirm(`Yakin ingin mengekspor ${selectedIds.length} data ${currentMode} terpilih?`)) {
+                    
+                    // Bangun URL Endpoint. Sesuaikan `/api/v1/export-..` dengan routing backend Laravel Anda.
+                    const queryParams = new URLSearchParams();
+                    selectedIds.forEach(id => queryParams.append('ids[]', id));
+                    
+                    // Opsional: sertakan token jika route export membutuhkan token via URL parameter (karena window.open tidak bisa pasang Header Authorization)
+                    queryParams.append('token', token); 
+                    
+                    const exportUrl = `/api/v1/export-${currentMode}?${queryParams.toString()}`;
+                    
+                    // Buka tab baru untuk mendownload file Excel
+                    window.open(exportUrl, '_blank');
+                }
+            });
+        }
+
     </script>
 </body>
 </html>

@@ -23,6 +23,12 @@ Route::prefix('v1')->group(function () {
     // --- ROUTE PUBLIC ---
     Route::post('/login', [AuthController::class, 'login']);
 
+    // --- [BARU] ROUTE EXPORT EXCEL ---
+    // Diletakkan di luar middleware auth:sanctum karena dieksekusi via browser window.open()
+    // Anda bisa melakukan pengecekan token manual di dalam Controller menggunakan $request->input('token')
+    Route::get('/export-kategori', [KategoriController::class, 'exportExcel']);
+    Route::get('/export-artikel', [ArtikelController::class, 'exportExcel']);
+
     // --- ROUTE PROTECTED (Wajib Token Sanctum) ---
     Route::middleware('auth:sanctum')->group(function () {
 

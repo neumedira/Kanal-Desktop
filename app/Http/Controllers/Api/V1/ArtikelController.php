@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Artikel;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\Request;
+use App\Exports\ArtikelExport;
+use Maatwebsite\Excel\Facades\Excel;
 
 class ArtikelController extends Controller
 {
@@ -50,5 +52,19 @@ class ArtikelController extends Controller
         $artikel->save();
 
         return $this->successResponse($artikel, 'Berhasil memperbarui keterangan artikel');
+    }
+
+    // --- FUNGSI EXPORT EXCEL ---
+    public function exportExcel(Request $request)
+    {
+        $ids = $request->input('ids');
+        if (!$ids) {
+            return $this->errorResponse('Tidak ada data artikel yang dipilih', 400);
+        }
+
+        $fileName = 'Jadwal_Advertorial_' . date('Y-m-d') . '.xlsx';
+        
+        // Memanggil file ArtikelExport yang sudah didesain
+        return Excel::download(new ArtikelExport($ids), $fileName);
     }
 }
