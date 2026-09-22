@@ -23,9 +23,8 @@ class SettingBonusController extends Controller
     public function update(Request $request)
     {
         $validated = $request->validate([
-            'nominal_per_artikel' => 'nullable|numeric',
-            'nominal_per_views'   => 'nullable|numeric',
-            'min_views'           => 'nullable|integer',
+            'minimal_views' => 'nullable|numeric',
+            'nominal_bonus'   => 'nullable|numeric',
         ]);
 
         $setting = PengaturanBonus::first();
@@ -33,7 +32,11 @@ class SettingBonusController extends Controller
         if (!$setting) {
             $setting = PengaturanBonus::create($validated);
         } else {
-            $setting->update($validated);
+            PengaturanBonus::where('id', $setting->id)->update([
+                'minimal_views' => $request->minimal_views,
+                'nominal_bonus' => $request->nominal_bonus,
+                'updated_by' => auth()->user()->id,
+            ]);
         }
 
         return response()->json([

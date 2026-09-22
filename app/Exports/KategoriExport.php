@@ -6,11 +6,12 @@ use App\Models\KategoriBerita;
 use Illuminate\Contracts\View\View;
 use Maatwebsite\Excel\Concerns\FromView;
 use Maatwebsite\Excel\Concerns\WithStyles;
+use Maatwebsite\Excel\Concerns\WithDrawings;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
-use PhpOffice\PhpSpreadsheet\RichText\RichText;
-use PhpOffice\PhpSpreadsheet\Style\Color;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
+use PhpOffice\PhpSpreadsheet\Worksheet\BaseDrawing;
 
-class KategoriExport implements FromView, WithStyles
+class KategoriExport implements FromView, WithStyles, WithDrawings
 {
     protected $ids;
     protected $kategoris;
@@ -18,7 +19,6 @@ class KategoriExport implements FromView, WithStyles
     public function __construct($ids)
     {
         $this->ids = $ids;
-        // Pindahkan query ke konstruktor agar bisa diakses oleh view() dan styles()
         $this->kategoris = KategoriBerita::with(['artikel' => function($query) {
             $query->orderBy('tanggal_terbit', 'desc');
         }])->whereIn('id', $this->ids)->get();
@@ -31,39 +31,35 @@ class KategoriExport implements FromView, WithStyles
         ]);
     }
 
-    public function styles(Worksheet $sheet): array
+    // Menambahkan Gambar Banner
+    public function drawings(): BaseDrawing|array
     {
-        // Atur lebar kolom
-        $sheet->getColumnDimension('A')->setWidth(5);
-        $sheet->getColumnDimension('B')->setWidth(50);
-        $sheet->getColumnDimension('C')->setWidth(60); // Kolom Link
-        $sheet->getColumnDimension('D')->setWidth(20);
+        $drawing = new Drawing();
+        $drawing->setName('Banner Kanal Kalimantan');
+        $drawing->setDescription('Banner Header');
+        $drawing->setPath(public_path('images/banner.png')); 
+        $drawing->setWidth(900); // Sesuaikan angka ini jika kurang panjang/terlalu panjang
+        $drawing->setCoordinates('A1');
 
-        // Looping untuk mewarnai teks link di kolom C menjadi Biru + Garis Bawah
-        $currentRow = 1;
-        foreach ($this->kategoris as $kategori) {
-            $currentRow++; // Baris Judul Kategori
-            $currentRow++; // Baris Header Tabel (NO, JUDUL, LINK, TANGGAL)
+        return $drawing;
+    }
 
-            if ($kategori->artikel && $kategori->artikel->count() > 0) {
-                foreach ($kategori->artikel as $artikel) {
-                    $currentRow++; // Baris data artikel
-                    
-                    // Terapkan RichText khusus pada Kolom C (Link Tautan)
-                    $richText = new RichText();
-                    $linkText = $richText->createTextRun($artikel->link ?? '');
-                    $linkText->getFont()->setColor(new Color(Color::COLOR_BLUE));
-                    $linkText->getFont()->setUnderline(true);
+public function styles(Worksheet $sheet): array
+    {
+        // Tinggi baris pertama untuk tatakan gambar
+        $sheet->getRowDimension(1)->setRowHeight(125);
 
-                    $sheet->setCellValue('C' . $currentRow, $richText);
-                }
-            } else {
-                $currentRow++; // Baris "Belum ada berita"
-            }
+        // Mengatur teks Judul (B) dan Link (C) bisa turun ke bawah (Wrap Text)
+        $sheet->getStyle('B')->getAlignment()->setWrapText(true);
+        $sheet->getStyle('C')->getAlignment()->setWrapText(true);
 
-            $currentRow++; // Baris spasi kosong antar kategori
-        }
+        // Atur lebar kolom (Total 5 Kolom disamakan dengan Artikel)
+        $sheet->getColumnDimension('A')->setWidth(5);  // NO
+        $sheet->getColumnDimension('B')->setWidth(40); // JUDUL BERITA
+        $sheet->getColumnDimension('C')->setWidth(40); // LINK TAUTAN
+        $sheet->getColumnDimension('D')->setWidth(20); // TANGGAL TERBIT
+        $sheet->getColumnDimension('E')->setWidth(20); // KETERANGAN (Tambahan)
 
         return [];
     }
-}   
+}

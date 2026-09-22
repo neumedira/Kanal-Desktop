@@ -11,3 +11,4 @@ use Illuminate\Support\Facades\Schedule;
 
 // Menjalankan sync WordPress setiap 30 menit (atau sesuaikan kebutuhan)
 Schedule::command('sync:wordpress')->everyThirtyMinutes();
+Schedule::command('update:berita')->hourly();

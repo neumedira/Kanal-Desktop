@@ -104,10 +104,15 @@
                 });
 
                 const result = await response.json();
+                console.log("Response API Dashboard:", result);
 
                 if (response.ok && result.data) {
-                    document.getElementById('totalBerita').innerText = Number(result.data.total_berita).toLocaleString('id-ID');
-                    document.getElementById('totalViews').innerText = Number(result.data.total_views).toLocaleString('id-ID');
+                    // Total Berita
+                    document.getElementById('totalBerita').innerText = Number(result.data.total_berita || 0).toLocaleString('id-ID');
+                    
+                    // Total Views (Diprioritaskan menangkap 'total_view' sesuai respon console API backend)
+                    const totalViewsValue = result.data.total_view ?? result.data.total_views ?? result.data.views ?? 0;
+                    document.getElementById('totalViews').innerText = Number(totalViewsValue).toLocaleString('id-ID');
                 } else {
                     if(response.status === 401) {
                         logout();

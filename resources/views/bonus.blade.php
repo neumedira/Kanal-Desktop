@@ -68,8 +68,10 @@
                         <tbody class="divide-y divide-gray-200 text-sm text-gray-800">
                             @forelse($bonuses ?? [] as $index => $item)
                             <tr class="hover:bg-gray-50 transition">
-                                <!-- Nomor urut menyesuaikan halaman pagination yang aktif -->
-                                <td class="py-4 px-4">{{ $bonuses->firstItem() + $index }}</td>
+                                <!-- Nomor urut aman dengan pengecekan fungsi pagination -->
+                                <td class="py-4 px-4">
+                                    {{ (isset($bonuses) && method_exists($bonuses, 'firstItem')) ? $bonuses->firstItem() + $index : $index + 1 }}
+                                </td>
                                 <td class="py-4 px-4 font-medium">{{ $item->wartawan->nama ?? '-' }}</td>
                                 <td class="py-4 px-4">
                                     <div class="text-gray-900 font-normal mb-0.5">{{ $item->artikel->judul ?? '-' }}</div>
@@ -96,25 +98,25 @@
                 <!-- Footer Tabel (Pagination & Export) -->
                 <div class="flex flex-col md:flex-row items-center justify-between px-4 py-3 bg-white border-t border-gray-200 gap-3">
                     <div class="text-sm text-gray-500">
-                        @if(isset($bonuses) && $bonuses->total() > 0)
+                        @if(isset($bonuses) && method_exists($bonuses, 'total') && $bonuses->total() > 0)
                             Menampilkan {{ $bonuses->firstItem() }}-{{ $bonuses->lastItem() }} dari {{ $bonuses->total() }} data
                         @else
-                            Menampilkan 0 data
+                            Menampilkan {{ count($bonuses ?? []) }} data
                         @endif
                     </div>
                     
                     <div class="flex items-center space-x-3">
                         <!-- Pagination Bawaan Laravel (Otomatis Aktif 1-5, Next, Prev) -->
-                        @if(isset($bonuses))
+                        @if(isset($bonuses) && method_exists($bonuses, 'links'))
                             <div>
                                 {{ $bonuses->appends(request()->query())->links() }}
                             </div>
                         @endif
 
-                        <!-- Tombol Export ke Excel -->
-                        <a href="#" class="bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-4 py-2 rounded flex items-center space-x-1.5 transition">
-                            <i class="fas fa-file-excel"></i> <span>Export ke Excel</span>
-                        </a>
+                                                <!-- Tombol Export ke Excel -->
+                        <a href="/bonus/export?bulan={{ request('bulan', date('m')) }}" class="bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-4 py-2 rounded flex items-center space-x-1.5 transition">
+    <i class="fas fa-file-excel"></i> <span>Export ke Excel</span>
+</a>
                     </div>
                 </div>
             </div>
@@ -124,7 +126,7 @@
     <!-- ========================================== -->
     <!-- MODAL PENGATURAN BONUS                     -->
     <!-- ========================================== -->
-    <div x-show="openModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 px-4" x-cloak>
+    <div x-show="openModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 px-4" x-cloak style="display: none;">
         <div class="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden transform transition-all" @click.away="openModal = false">
             <div class="flex justify-between items-center px-6 py-4 border-b border-gray-200">
                 <h3 class="text-lg font-bold text-gray-900">Pengaturan Bonus</h3>
@@ -207,7 +209,7 @@
             })
             .then(response => response.json())
             .then(data => {
-                if(data.status === 'success' || data.message) {
+                if(data.status === 'success' || data.message || response.ok) {
                     alert('Pengaturan bonus berhasil diperbarui');
                     location.reload();
                 } else {
@@ -218,7 +220,7 @@
                 console.error('Error:', error);
                 alert('Terjadi kesalahan saat menyimpan data.');
             });
-        });
+        }); 
     </script>
 </body>
 </html>
