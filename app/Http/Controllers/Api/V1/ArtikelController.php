@@ -13,11 +13,15 @@ class ArtikelController extends Controller
 {
     use ApiResponseTrait;
 
-    public function index(Request $request)
+   public function index(Request $request)
     {
         $artikel = Artikel::with(['kategori', 'wartawan'])
             ->search($request->search)
             ->kategori($request->kategori_id)
+            // Ganti bagian ini: gunakan 'filled' agar mengabaikan filter jika string tanggal kosong
+            ->when($request->filled('tanggal'), function ($query) use ($request) {
+                return $query->whereDate('tanggal_terbit', $request->tanggal);
+            })
             ->filterTanggal($request->start_date, $request->end_date)
             ->orderBy('tanggal_terbit', 'desc')
             ->paginate($request->get('per_page', 15));

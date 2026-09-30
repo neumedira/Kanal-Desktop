@@ -3,84 +3,69 @@
 namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
 use App\Models\Bonus;
 use App\Models\PengaturanBonus;
-use App\Traits\ApiResponseTrait;
-use Illuminate\Http\Request;
-use Illuminate\Pagination\LengthAwarePaginator;
-use stdClass;
 
 class BonusController extends Controller
 {
-    use ApiResponseTrait;
-
+    // Menampilkan halaman bonus
     public function index(Request $request)
-{
-    $bulan = (int) $request->query('bulan', date('m'));
-    // Untuk pencarian database ('like'), kita tidak perlu strtolower karena MySQL umumnya sudah case-insensitive
-    $search = $request->query('search');
+    {
+        $bulan = $request->input('bulan', date('m'));
+        $search = $request->input('search');
 
-    // ==========================================
-    // 1. DATA PENGATURAN
-    // ==========================================
-    $pengaturanBonus = PengaturanBonus::first();
+        // Ambil pengaturan bonus aktif
+        $pengaturan = PengaturanBonus::first() ?? (object) [
+            'minimal_views' => 3000,
+            'nominal_bonus' => 50000
+        ];
 
-    // ==========================================
-    // 2. QUERY DATA BONUS DENGAN PENCARIAN & PAGINASI
-    // ==========================================
-    $bonuses = Bonus::with(['wartawan', 'artikel'])
-        ->where('periode_bulan', $bulan)
-        ->when($search, function ($query) use ($search) {
-            // Pencarian di relasi wartawan atau artikel
-            $query->where(function ($q) use ($search) {
-                $q->whereHas('wartawan', function ($qWartawan) use ($search) {
-                    $qWartawan->where('nama', 'like', '%' . $search . '%');
-                })
-                ->orWhereHas('artikel', function ($qArtikel) use ($search) {
-                    $qArtikel->where('judul', 'like', '%' . $search . '%');
-                });
+        // Query data bonus berdasarkan periode bulan dan relasi
+        $query = Bonus::with(['wartawan', 'artikel'])
+                      ->where('periode_bulan', $bulan);
+
+        // Fitur pencarian berdasarkan judul artikel atau nama wartawan
+        if ($search) {
+            $query->whereHas('artikel', function($q) use ($search) {
+                $q->where('judul', 'like', "%{$search}%");
+            })->orWhereHas('wartawan', function($q) use ($search) {
+                $q->where('nama', 'like', "%{$search}%");
             });
-        })
-        ->paginate(3);
+        }
 
-    // Menyisipkan parameter ke URL pagination agar saat pindah halaman, filter tidak hilang
-    $bonuses->appends([
-        'bulan'  => $bulan,
-        'search' => $search
-    ]);
+        // Pagination 10 data per halaman
+        $bonuses = $query->paginate(10);
 
-    // ==========================================
-    // 3. RETURN KE VIEW / API
-    // ==========================================
-    if (!$request->wantsJson()) {
-        return view('bonus', [
-            'bonuses'    => $bonuses, // Gunakan variabel $bonuses yang sudah dipaginate
-            'pengaturan' => $pengaturanBonus
+        return view('bonus', compact('bonuses', 'pengaturan'));
+    }
+
+    // Menyimpan pengaturan dari Modal Alpine.js via Fetch API
+    public function updatePengaturan(Request $request)
+    {
+        $request->validate([
+            'minimal_views' => 'required|numeric',
+            'nominal_bonus' => 'required|numeric',
         ]);
-    }
 
-    return $this->successResponse($bonuses, 'Data bonus berhasil dimuat');
-}
+        $pengaturan = PengaturanBonus::first();
+        
+        if (!$pengaturan) {
+            $pengaturan = new PengaturanBonus();
+        }
 
-// --- FUNGSI EXPORT EXCEL BONUS ---
-    public function exportExcel(Request $request)
-    {
-        $bulan = (int) $request->query('bulan', date('m'));
-        $namaBulan = \Carbon\Carbon::createFromDate(date('Y'), $bulan, 1)->translatedFormat('F');
+        $pengaturan->minimal_views = $request->minimal_views;
+        $pengaturan->nominal_bonus = $request->nominal_bonus;
+        
+        if (auth()->check()) {
+            $pengaturan->updated_by = auth()->id();
+        }
+        
+        $pengaturan->save();
 
-        $fileName = 'Rekap_Bonus_' . $namaBulan . '_' . date('Y') . '.xlsx';
-
-        return \Maatwebsite\Excel\Facades\Excel::download(new \App\Exports\BonusExport($bulan), $fileName);
-    }
-    
-    // Helper untuk membuat struktur dummy
-    private function createDummyItem($nama, $judul, $link, $views, $bonus)
-    {
-        $item = new stdClass();
-        $item->wartawan = (object) ['nama' => $nama];
-        $item->artikel = (object) ['judul' => $judul, 'link' => $link];
-        $item->views_saat_dihitung = $views;
-        $item->total_bonus = $bonus;
-        return $item;
+        return response()->json([
+            'status' => 'success', 
+            'message' => 'Pengaturan bonus berhasil diperbarui'
+        ]);
     }
 }

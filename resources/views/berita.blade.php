@@ -38,14 +38,20 @@
                     </select>
                 </div>
 
-                <!-- Tanggal Dropdown (Hidden by default, muncul saat kategori dipilih) -->
-                <div class="w-full md:w-56 hidden" id="tanggalFilterContainer">
-                    <div class="relative w-full">
-                        <input type="date" id="tanggalFilter" onchange="handleFilterChange()"
-                            class="w-full py-2 px-3 text-sm text-gray-700 border border-gray-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500 outline-none transition bg-white"
-                            title="Filter per tanggal">
-                    </div>
-                </div>
+              <!-- Tanggal Dropdown (Hidden by default, muncul saat kategori dipilih) -->
+<div class="w-full md:w-auto hidden" id="tanggalFilterContainer">
+    <div class="flex items-center gap-2">
+        <input type="date" id="tanggalFilter" onchange="handleFilterChange()"
+            class="w-full md:w-48 py-2 px-3 text-sm text-gray-700 border border-gray-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500 outline-none transition bg-white"
+            title="Filter per tanggal">
+            
+        <!-- Tombol Baru untuk Reset Tanggal -->
+        <button type="button" onclick="resetTanggalFilter()" title="Tampilkan Keseluruhan Berita"
+            class="bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700 px-3 py-2 rounded text-sm transition font-medium whitespace-nowrap flex items-center gap-2">
+            <i class="fa-solid fa-rotate-left"></i> Reset
+        </button>
+    </div>
+</div>
             </div>
         </div>
 
@@ -416,7 +422,14 @@
                 }
             });
         }
-
+// --- LETAKKAN FUNGSI RESET DI SINI (Di luar semua fungsi lain) ---
+window.resetTanggalFilter = function() {
+    const tanggalInput = document.getElementById('tanggalFilter');
+    if (tanggalInput) {
+        tanggalInput.value = ''; 
+    }
+    handleFilterChange(); 
+};
     </script>
 </body>
 </html>
