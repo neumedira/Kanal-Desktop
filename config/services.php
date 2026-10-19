@@ -37,6 +37,8 @@ return [
 
     'wordpress' => [
         'url' => env('WORDPRESS_API_URL', 'https://kanalkalimantan.com/wp-json/wp/v2'),
+        // Root situs WordPress (tanpa /wp-json), dipakai untuk endpoint Post Views Counter
+        'site_url' => env('WORDPRESS_SITE_URL', 'https://kanalkalimantan.com'),
     ],
 
 ];

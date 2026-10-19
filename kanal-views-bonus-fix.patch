@@ -1,0 +1,392 @@
+diff --git a/app/Console/Commands/CalculateBonus.php b/app/Console/Commands/CalculateBonus.php
+index 7a8bcac..e54a3d6 100644
+--- a/app/Console/Commands/CalculateBonus.php
++++ b/app/Console/Commands/CalculateBonus.php
+@@ -10,23 +10,25 @@
+ 
+ class CalculateBonus extends Command
+ {
+-    protected $signature = 'bonus:calculate';
++    protected $signature = 'bonus:calculate
++        {--bulan= : Bulan terbit artikel (1-12), default bulan ini}
++        {--tahun= : Tahun terbit artikel, default tahun ini}';
+     protected $description = 'Menghitung dan mencatat bonus wartawan secara otomatis';
+ 
+     public function handle()
+     {
+-        $pengaturan = PengaturanBonus::first();
+-        if (!$pengaturan) {
+-            $this->error('Pengaturan bonus belum diatur.');
+-            return;
+-        }
+-
+-        $bulanIni = Carbon::now()->month;
+-        $tahunIni = Carbon::now()->year;
+-
+-        // Cari artikel bulan ini yang views-nya memenuhi syarat
+-        $artikelLolos = Artikel::whereMonth('tanggal_terbit', $bulanIni)
+-            ->whereYear('tanggal_terbit', $tahunIni)
++        // Jika pengaturan belum ada, pakai nilai default yang sama dengan halaman bonus
++        $pengaturan = PengaturanBonus::first() ?? (object) [
++            'minimal_views' => 3000,
++            'nominal_bonus' => 50000,
++        ];
++
++        $bulan = (int) ($this->option('bulan') ?: Carbon::now()->month);
++        $tahun = (int) ($this->option('tahun') ?: Carbon::now()->year);
++
++        // Cari artikel di periode tersebut yang views-nya memenuhi syarat
++        $artikelLolos = Artikel::whereMonth('tanggal_terbit', $bulan)
++            ->whereYear('tanggal_terbit', $tahun)
+             ->where('total_views', '>=', $pengaturan->minimal_views)
+             ->get();
+ 
+@@ -35,8 +37,8 @@ public function handle()
+             Bonus::updateOrCreate(
+                 [
+                     'artikel_id'    => $artikel->id,
+-                    'periode_bulan' => $bulanIni,
+-                    'periode_tahun' => $tahunIni,
++                    'periode_bulan' => $bulan,
++                    'periode_tahun' => $tahun,
+                 ],
+                 [
+                     'wartawan_id'            => $artikel->wartawan_id,
+@@ -51,6 +53,6 @@ public function handle()
+             $count++;
+         }
+ 
+-        $this->info("Kalkulasi selesai. {$count} artikel mendapatkan bonus.");
++        $this->info("Kalkulasi selesai ({$bulan}/{$tahun}). {$count} artikel mendapatkan bonus.");
+     }
+ }
+diff --git a/app/Console/Commands/HitungBonus.php b/app/Console/Commands/HitungBonus.php
+deleted file mode 100644
+index be929d0..0000000
+--- a/app/Console/Commands/HitungBonus.php
++++ /dev/null
+@@ -1,99 +0,0 @@
+-<?php
+-
+-namespace App\Console\Commands;
+-
+-use Illuminate\Console\Command;
+-use Illuminate\Support\Facades\Http;
+-use App\Models\Artikel;
+-use App\Models\Bonus;
+-use App\Models\PengaturanBonus;
+-use Carbon\Carbon;
+-
+-class HitungBonus extends Command
+-{
+-    // Nama perintah di terminal
+-    protected $signature = 'bonus:hitung';
+-    
+-    // Deskripsi perintah
+-    protected $description = 'Scraping views dari URL web dan merekapitulasi bonus pewarta';
+-
+-    public function handle()
+-    {
+-        $this->info("Memulai proses scraping views dan perhitungan bonus...");
+-
+-        // Ambil pengaturan bonus (fallback jika belum ada di database)
+-        $pengaturan = PengaturanBonus::first();
+-        $minimalViews = $pengaturan->minimal_views ?? 3000;
+-        $nominalBonus = $pengaturan->nominal_bonus ?? 50000;
+-
+-        // Hanya ambil artikel yang belum pernah disinkronisasi sama sekali
+-$artikels = Artikel::whereNull('last_synced_at')->get();
+-        $totalDihitung = 0;
+-
+-        if ($artikels->isEmpty()) {
+-            $this->warn("Tidak ada artikel yang perlu dihitung atau semua sudah memiliki views.");
+-            return;
+-        }
+-
+-        // Progress bar agar Anda bisa memantau proses berjalannya di terminal
+-        $bar = $this->output->createProgressBar(count($artikels));
+-        $bar->start();
+-
+-        foreach ($artikels as $artikel) {
+-            $views = 0;
+-            $url = $artikel->link; 
+-
+-            try {
+-                // Proses Scraping: Buka URL dengan batas waktu 10 detik agar terminal tidak hang
+-                $response = Http::timeout(10)->get($url);
+-
+-                if ($response->successful()) {
+-                    $html = $response->body();
+-                    
+-                    // Regex untuk mencari kata "Dilihat: 1.500" atau "Dilihat: 1500"
+-                    if (preg_match('/<span class="post-views-count">([\d\.,]+)<\/span>/i', $html, $matches)) {
+-                        // Hilangkan titik atau koma jika ada (misal 1.500 menjadi angka 1500)
+-                        $views = (int) str_replace(['.', ','], '', $matches[1]);
+-                    }
+-                }
+-            } catch (\Exception $e) {
+-                // Abaikan jika URL gagal dimuat (misal server down atau timeout), lanjut ke artikel berikutnya
+-            }
+-
+-            // Simpan hasil views ke database kolom total_views
+-            $artikel->total_views = $views;
+-$artikel->last_synced_at = Carbon::now(); // Tandai waktu prosesnya agar tidak diulang besok
+-$artikel->save();
+-
+-            // Logika Hitung Bonus
+-            if ($views >= $minimalViews) {
+-                $tanggalTerbit = Carbon::parse($artikel->tanggal_terbit);
+-                $kelipatan = floor($views / $minimalViews);
+-                $totalBonus = $kelipatan * $nominalBonus;
+-
+-                Bonus::updateOrCreate(
+-                    ['artikel_id' => $artikel->id], // Mencegah duplikasi bonus untuk artikel yang sama
+-                    [
+-                        'wartawan_id'            => $artikel->wartawan_id,
+-                        'periode_bulan'          => $tanggalTerbit->format('n'),
+-                        'periode_tahun'          => $tanggalTerbit->format('Y'),
+-                        'views_saat_dihitung'    => $views,
+-                        'minimal_views_saat_itu' => $minimalViews,
+-                        'nominal_bonus_saat_itu' => $nominalBonus,
+-                        'total_bonus'            => $totalBonus,
+-                        'sumber'                 => 'otomatis_sistem',
+-                    ]
+-                );
+-                $totalDihitung++;
+-            }
+-
+-            // Memberikan jeda 0.5 detik di setiap perulangan agar server Kanal Kalimantan tidak down karena di-spam request
+-            usleep(500000); 
+-            $bar->advance();
+-        }
+-
+-        $bar->finish();
+-        $this->newLine();
+-        $this->info("Selesai! Berhasil menemukan {$totalDihitung} artikel yang memenuhi syarat bonus.");
+-    }
+-}
+\ No newline at end of file
+diff --git a/app/Console/Commands/SyncViewsCommand.php b/app/Console/Commands/SyncViewsCommand.php
+new file mode 100644
+index 0000000..747e8f3
+--- /dev/null
++++ b/app/Console/Commands/SyncViewsCommand.php
+@@ -0,0 +1,71 @@
++<?php
++
++namespace App\Console\Commands;
++
++use App\Models\Artikel;
++use App\Services\WordPressService;
++use Illuminate\Console\Command;
++use Illuminate\Http\Client\Pool;
++use Illuminate\Support\Facades\Http;
++
++class SyncViewsCommand extends Command
++{
++    protected $signature = 'views:sync
++        {--days=31 : Hanya perbarui artikel yang terbit dalam N hari terakhir}
++        {--concurrency=10 : Jumlah request paralel per batch}';
++
++    protected $description = 'Mengambil jumlah views artikel dari plugin Post Views Counter (WordPress)';
++
++    public function handle(): int
++    {
++        $siteUrl = rtrim(config('services.wordpress.site_url', 'https://kanalkalimantan.com'), '/');
++        $days = max(1, (int) $this->option('days'));
++        $concurrency = max(1, (int) $this->option('concurrency'));
++
++        $query = Artikel::whereNotNull('wp_post_id')
++            ->whereDate('tanggal_terbit', '>=', now()->subDays($days)->toDateString());
++
++        $total = (clone $query)->count();
++        if ($total === 0) {
++            $this->warn("Tidak ada artikel dalam {$days} hari terakhir.");
++            return self::SUCCESS;
++        }
++
++        $this->info("Memperbarui views untuk {$total} artikel...");
++        $updated = 0;
++        $failed = 0;
++
++        $query->orderBy('id')->chunkById($concurrency, function ($artikels) use ($siteUrl, &$updated, &$failed) {
++            $responses = Http::pool(function (Pool $pool) use ($artikels, $siteUrl) {
++                return $artikels->map(fn ($a) => $pool
++                    ->as((string) $a->id)
++                    ->timeout(10)
++                    ->get("{$siteUrl}/wp-json/post-views-counter/get-post-views/{$a->wp_post_id}")
++                )->all();
++            });
++
++            foreach ($artikels as $artikel) {
++                $response = $responses[(string) $artikel->id] ?? null;
++
++                // Respons error / exception / bukan angka => lewati, JANGAN menimpa nilai lama dengan 0
++                $views = ($response instanceof \Illuminate\Http\Client\Response && $response->successful())
++                    ? WordPressService::parseViews($response->body())
++                    : null;
++
++                if ($views === null) {
++                    $failed++;
++                    continue;
++                }
++
++                $artikel->total_views = $views;
++                $artikel->last_synced_at = now();
++                $artikel->save();
++                $updated++;
++            }
++        });
++
++        $this->info("Selesai. Diperbarui: {$updated}, gagal/dilewati: {$failed}.");
++
++        return $failed > 0 && $updated === 0 ? self::FAILURE : self::SUCCESS;
++    }
++}
+diff --git a/app/Services/WordPressService.php b/app/Services/WordPressService.php
+index f516455..b3bba54 100644
+--- a/app/Services/WordPressService.php
++++ b/app/Services/WordPressService.php
+@@ -18,6 +18,43 @@ public function __construct()
+         $this->baseUrl = config('services.wordpress.url', 'https://kanalkalimantan.com/wp-json/wp/v2');
+     }
+ 
++    /**
++     * Ambil jumlah views satu artikel dari plugin Post Views Counter.
++     * Endpoint mengembalikan angka polos (mis. 6). Jika beberapa ID digabung
++     * dengan koma, hasilnya adalah JUMLAH total, jadi harus satu ID per request.
++     *
++     * @return int|null null jika request gagal / respons bukan angka
++     *                  (agar nilai lama di database tidak tertimpa 0).
++     */
++    public function fetchViews(int $wpPostId): ?int
++    {
++        $siteUrl = rtrim(config('services.wordpress.site_url', 'https://kanalkalimantan.com'), '/');
++
++        try {
++            $response = Http::timeout(10)
++                ->get("{$siteUrl}/wp-json/post-views-counter/get-post-views/{$wpPostId}");
++        } catch (\Throwable $e) {
++            Log::warning("fetchViews gagal untuk post {$wpPostId}: {$e->getMessage()}");
++            return null;
++        }
++
++        return self::parseViews($response->successful() ? $response->body() : null);
++    }
++
++    /**
++     * Ubah isi respons (mis. "6") menjadi integer, atau null bila bukan angka bulat.
++     */
++    public static function parseViews(?string $body): ?int
++    {
++        if ($body === null) {
++            return null;
++        }
++
++        $clean = trim($body, " \t\n\r\0\x0B\"");
++
++        return preg_match('/^\d+$/', $clean) ? (int) $clean : null;
++    }
++
+     /**
+      * Sinkronisasi Kategori dari WP
+      */
+@@ -82,7 +119,8 @@ public function syncArtikel(int $page = 1, int $perPage = 20): void
+                             'judul'          => html_entity_decode($post['title']['rendered'], ENT_QUOTES, 'UTF-8'),
+                             'link'           => $post['link'],
+                             'tanggal_terbit' => date('Y-m-d', strtotime($post['date'])),
+-                            'total_views'    => $post['pageviews'] ?? $post['views'] ?? 0,
++                            // total_views sengaja TIDAK diisi di sini: REST API /wp/v2/posts
++                            // tidak membawa data views. Views diisi oleh command `views:sync`.
+                             'last_synced_at' => now(),
+                         ]
+                     );
+diff --git a/config/services.php b/config/services.php
+index 6363c6d..624e022 100644
+--- a/config/services.php
++++ b/config/services.php
+@@ -37,6 +37,8 @@
+ 
+     'wordpress' => [
+         'url' => env('WORDPRESS_API_URL', 'https://kanalkalimantan.com/wp-json/wp/v2'),
++        // Root situs WordPress (tanpa /wp-json), dipakai untuk endpoint Post Views Counter
++        'site_url' => env('WORDPRESS_SITE_URL', 'https://kanalkalimantan.com'),
+     ],
+ 
+ ];
+diff --git a/database/migrations/2026_09_22_070549_create_pengaturan_bonus_table.php b/database/migrations/2026_09_22_070549_create_pengaturan_bonus_table.php
+deleted file mode 100644
+index 828c08f..0000000
+--- a/database/migrations/2026_09_22_070549_create_pengaturan_bonus_table.php
++++ /dev/null
+@@ -1,23 +0,0 @@
+-<?php
+-
+-use Illuminate\Database\Migrations\Migration;
+-use Illuminate\Database\Schema\Blueprint;
+-use Illuminate\Support\Facades\Schema;
+-
+-return new class extends Migration
+-{
+-    public function up()
+-    {
+-        Schema::create('pengaturan_bonus', function (Blueprint $table) {
+-            $table->id();
+-            $table->integer('minimal_views')->default(3000);
+-            $table->decimal('nominal_bonus', 15, 2)->default(50000);
+-            $table->timestamps();
+-        });
+-    }
+-
+-    public function down()
+-    {
+-        Schema::dropIfExists('pengaturan_bonus');
+-    }
+-};
+\ No newline at end of file
+diff --git a/database/migrations/2026_09_22_070602_create_bonuses_table.php b/database/migrations/2026_09_22_070602_create_bonuses_table.php
+deleted file mode 100644
+index 8818b74..0000000
+--- a/database/migrations/2026_09_22_070602_create_bonuses_table.php
++++ /dev/null
+@@ -1,27 +0,0 @@
+-<?php
+-
+-use Illuminate\Database\Migrations\Migration;
+-use Illuminate\Database\Schema\Blueprint;
+-use Illuminate\Support\Facades\Schema;
+-
+-return new class extends Migration
+-{
+-    public function up()
+-    {
+-        Schema::create('bonuses', function (Blueprint $table) {
+-            $table->id();
+-            $table->foreignId('artikel_id')->constrained('artikels')->onDelete('cascade');
+-            $table->foreignId('wartawan_id')->constrained('wartawans')->onDelete('cascade');
+-            $table->integer('views_saat_dihitung')->default(0);
+-            $table->decimal('total_bonus', 15, 2)->default(0);
+-            $table->integer('bulan'); // Untuk filter bulan
+-            $table->integer('tahun');
+-            $table->timestamps();
+-        });
+-    }
+-
+-    public function down()
+-    {
+-        Schema::dropIfExists('bonuses');
+-    }
+-};
+\ No newline at end of file
+diff --git a/routes/console.php b/routes/console.php
+index 6b86eb5..7f49e65 100644
+--- a/routes/console.php
++++ b/routes/console.php
+@@ -12,3 +12,7 @@
+ // Menjalankan sync WordPress setiap 30 menit (atau sesuaikan kebutuhan)
+ Schedule::command('sync:wordpress')->everyThirtyMinutes();
+ Schedule::command('update:berita')->hourly();
++
++// Views dulu, baru bonus (jaraknya cukup agar views:sync selesai sebelum bonus dihitung)
++Schedule::command('views:sync')->hourlyAt(15)->withoutOverlapping();
++Schedule::command('bonus:calculate')->hourlyAt(45)->withoutOverlapping();

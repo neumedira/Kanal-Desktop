@@ -10,23 +10,25 @@ use Carbon\Carbon;
 
 class CalculateBonus extends Command
 {
-    protected $signature = 'bonus:calculate';
+    protected $signature = 'bonus:calculate
+        {--bulan= : Bulan terbit artikel (1-12), default bulan ini}
+        {--tahun= : Tahun terbit artikel, default tahun ini}';
     protected $description = 'Menghitung dan mencatat bonus wartawan secara otomatis';
 
     public function handle()
     {
-        $pengaturan = PengaturanBonus::first();
-        if (!$pengaturan) {
-            $this->error('Pengaturan bonus belum diatur.');
-            return;
-        }
+        // Jika pengaturan belum ada, pakai nilai default yang sama dengan halaman bonus
+        $pengaturan = PengaturanBonus::first() ?? (object) [
+            'minimal_views' => 3000,
+            'nominal_bonus' => 50000,
+        ];
 
-        $bulanIni = Carbon::now()->month;
-        $tahunIni = Carbon::now()->year;
+        $bulan = (int) ($this->option('bulan') ?: Carbon::now()->month);
+        $tahun = (int) ($this->option('tahun') ?: Carbon::now()->year);
 
-        // Cari artikel bulan ini yang views-nya memenuhi syarat
-        $artikelLolos = Artikel::whereMonth('tanggal_terbit', $bulanIni)
-            ->whereYear('tanggal_terbit', $tahunIni)
+        // Cari artikel di periode tersebut yang views-nya memenuhi syarat
+        $artikelLolos = Artikel::whereMonth('tanggal_terbit', $bulan)
+            ->whereYear('tanggal_terbit', $tahun)
             ->where('total_views', '>=', $pengaturan->minimal_views)
             ->get();
 
@@ -35,8 +37,8 @@ class CalculateBonus extends Command
             Bonus::updateOrCreate(
                 [
                     'artikel_id'    => $artikel->id,
-                    'periode_bulan' => $bulanIni,
-                    'periode_tahun' => $tahunIni,
+                    'periode_bulan' => $bulan,
+                    'periode_tahun' => $tahun,
                 ],
                 [
                     'wartawan_id'            => $artikel->wartawan_id,
@@ -51,6 +53,6 @@ class CalculateBonus extends Command
             $count++;
         }
 
-        $this->info("Kalkulasi selesai. {$count} artikel mendapatkan bonus.");
+        $this->info("Kalkulasi selesai ({$bulan}/{$tahun}). {$count} artikel mendapatkan bonus.");
     }
 }

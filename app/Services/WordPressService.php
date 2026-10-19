@@ -19,6 +19,43 @@ class WordPressService
     }
 
     /**
+     * Ambil jumlah views satu artikel dari plugin Post Views Counter.
+     * Endpoint mengembalikan angka polos (mis. 6). Jika beberapa ID digabung
+     * dengan koma, hasilnya adalah JUMLAH total, jadi harus satu ID per request.
+     *
+     * @return int|null null jika request gagal / respons bukan angka
+     *                  (agar nilai lama di database tidak tertimpa 0).
+     */
+    public function fetchViews(int $wpPostId): ?int
+    {
+        $siteUrl = rtrim(config('services.wordpress.site_url', 'https://kanalkalimantan.com'), '/');
+
+        try {
+            $response = Http::timeout(10)
+                ->get("{$siteUrl}/wp-json/post-views-counter/get-post-views/{$wpPostId}");
+        } catch (\Throwable $e) {
+            Log::warning("fetchViews gagal untuk post {$wpPostId}: {$e->getMessage()}");
+            return null;
+        }
+
+        return self::parseViews($response->successful() ? $response->body() : null);
+    }
+
+    /**
+     * Ubah isi respons (mis. "6") menjadi integer, atau null bila bukan angka bulat.
+     */
+    public static function parseViews(?string $body): ?int
+    {
+        if ($body === null) {
+            return null;
+        }
+
+        $clean = trim($body, " \t\n\r\0\x0B\"");
+
+        return preg_match('/^\d+$/', $clean) ? (int) $clean : null;
+    }
+
+    /**
      * Sinkronisasi Kategori dari WP
      */
     public function syncKategori(): void
@@ -82,7 +119,8 @@ class WordPressService
                             'judul'          => html_entity_decode($post['title']['rendered'], ENT_QUOTES, 'UTF-8'),
                             'link'           => $post['link'],
                             'tanggal_terbit' => date('Y-m-d', strtotime($post['date'])),
-                            'total_views'    => $post['pageviews'] ?? $post['views'] ?? 0,
+                            // total_views sengaja TIDAK diisi di sini: REST API /wp/v2/posts
+                            // tidak membawa data views. Views diisi oleh command `views:sync`.
                             'last_synced_at' => now(),
                         ]
                     );
