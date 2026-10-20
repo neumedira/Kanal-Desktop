@@ -19,15 +19,16 @@ class BonusExport implements FromView, WithStyles
     protected $namaBulan;
     protected $tahun;
 
-    public function __construct($bulan)
+    public function __construct($bulan, $tahun = null)
     {
         $this->bulan = $bulan;
-        $this->tahun = date('Y'); // Mengambil tahun saat ini
+        $this->tahun = $tahun ?: date('Y'); // Default: tahun ini
         $this->namaBulan = Carbon::createFromDate($this->tahun, $this->bulan, 1)->translatedFormat('F');
 
         // Ambil SEMUA data bonus pada bulan tersebut tanpa pagination
         $this->bonuses = Bonus::with(['wartawan', 'artikel'])
             ->where('periode_bulan', $this->bulan)
+            ->where('periode_tahun', $this->tahun)
             ->get();
     }
 

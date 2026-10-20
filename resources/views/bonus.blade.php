@@ -45,6 +45,13 @@
                         @endforeach
                     </select>
 
+                    <!-- Filter Tahun -->
+                    <select id="filter-tahun" class="bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-gray-400">
+                        @foreach($daftarTahun as $th)
+                            <option value="{{ $th }}" {{ (int) $tahun === (int) $th ? 'selected' : '' }}>{{ $th }}</option>
+                        @endforeach
+                    </select>
+
                     <!-- Tombol Pengaturan (Trigger Modal) -->
                     <button @click="openModal = true" type="button" class="bg-white border border-gray-300 px-3 py-2 rounded-md text-gray-600 hover:bg-gray-50 transition">
                         <i class="fas fa-cog"></i>
@@ -114,7 +121,7 @@
                         @endif
 
                                                 <!-- Tombol Export ke Excel -->
-                        <a href="/bonus/export?bulan={{ request('bulan', date('m')) }}" class="bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-4 py-2 rounded flex items-center space-x-1.5 transition">
+                        <a href="/bonus/export?bulan={{ request('bulan', date('n')) }}&tahun={{ $tahun }}" class="bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-4 py-2 rounded flex items-center space-x-1.5 transition">
     <i class="fas fa-file-excel"></i> <span>Export ke Excel</span>
 </a>
                     </div>
@@ -172,6 +179,14 @@
             let selectedMonth = this.value;
             let url = new URL(window.location.href);
             url.searchParams.set('bulan', selectedMonth);
+            window.location.href = url.toString();
+        });
+
+        // 1b. Filter Tahun (sama seperti bulan)
+        document.getElementById('filter-tahun').addEventListener('change', function() {
+            let url = new URL(window.location.href);
+            url.searchParams.set('tahun', this.value);
+            url.searchParams.delete('page');
             window.location.href = url.toString();
         });
 

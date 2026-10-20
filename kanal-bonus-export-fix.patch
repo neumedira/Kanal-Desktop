@@ -1,0 +1,140 @@
+diff --git a/app/Exports/BonusExport.php b/app/Exports/BonusExport.php
+index 4905306..d8c7bb0 100644
+--- a/app/Exports/BonusExport.php
++++ b/app/Exports/BonusExport.php
+@@ -19,15 +19,16 @@ class BonusExport implements FromView, WithStyles
+     protected $namaBulan;
+     protected $tahun;
+ 
+-    public function __construct($bulan)
++    public function __construct($bulan, $tahun = null)
+     {
+         $this->bulan = $bulan;
+-        $this->tahun = date('Y'); // Mengambil tahun saat ini
++        $this->tahun = $tahun ?: date('Y'); // Default: tahun ini
+         $this->namaBulan = Carbon::createFromDate($this->tahun, $this->bulan, 1)->translatedFormat('F');
+ 
+         // Ambil SEMUA data bonus pada bulan tersebut tanpa pagination
+         $this->bonuses = Bonus::with(['wartawan', 'artikel'])
+             ->where('periode_bulan', $this->bulan)
++            ->where('periode_tahun', $this->tahun)
+             ->get();
+     }
+ 
+diff --git a/app/Http/Controllers/Api/V1/Admin/BonusController.php b/app/Http/Controllers/Api/V1/Admin/BonusController.php
+index f63631f..70aa6e0 100644
+--- a/app/Http/Controllers/Api/V1/Admin/BonusController.php
++++ b/app/Http/Controllers/Api/V1/Admin/BonusController.php
+@@ -6,15 +6,22 @@
+ use Illuminate\Http\Request;
+ use App\Models\Bonus;
+ use App\Models\PengaturanBonus;
++use App\Exports\BonusExport;
++use Maatwebsite\Excel\Facades\Excel;
+ 
+ class BonusController extends Controller
+ {
+     // Menampilkan halaman bonus
+     public function index(Request $request)
+     {
+-        $bulan = $request->input('bulan', date('m'));
++        $bulan = (int) $request->input('bulan', date('n'));
++        $tahun = (int) $request->input('tahun', date('Y'));
+         $search = $request->input('search');
+ 
++        // Daftar tahun untuk dropdown: semua tahun yang punya data bonus + tahun ini
++        $daftarTahun = Bonus::query()->distinct()->pluck('periode_tahun')
++            ->push((int) date('Y'))->unique()->sortDesc()->values();
++
+         // Ambil pengaturan bonus aktif
+         $pengaturan = PengaturanBonus::first() ?? (object) [
+             'minimal_views' => 3000,
+@@ -23,21 +30,38 @@ public function index(Request $request)
+ 
+         // Query data bonus berdasarkan periode bulan dan relasi
+         $query = Bonus::with(['wartawan', 'artikel'])
+-                      ->where('periode_bulan', $bulan);
++                      ->where('periode_bulan', $bulan)
++                      ->where('periode_tahun', $tahun);
+ 
+-        // Fitur pencarian berdasarkan judul artikel atau nama wartawan
++        // Fitur pencarian berdasarkan judul artikel atau nama wartawan.
++        // Dibungkus satu grup supaya filter bulan & tahun tidak ikut terlewati oleh OR.
+         if ($search) {
+-            $query->whereHas('artikel', function($q) use ($search) {
+-                $q->where('judul', 'like', "%{$search}%");
+-            })->orWhereHas('wartawan', function($q) use ($search) {
+-                $q->where('nama', 'like', "%{$search}%");
++            $query->where(function ($outer) use ($search) {
++                $outer->whereHas('artikel', function ($q) use ($search) {
++                    $q->where('judul', 'like', "%{$search}%");
++                })->orWhereHas('wartawan', function ($q) use ($search) {
++                    $q->where('nama', 'like', "%{$search}%");
++                });
+             });
+         }
+ 
+         // Pagination 10 data per halaman
+-        $bonuses = $query->paginate(10);
++        $bonuses = $query->paginate(10)->withQueryString();
++
++        return view('bonus', compact('bonuses', 'pengaturan', 'tahun', 'daftarTahun'));
++    }
++
++    // Unduh laporan bonus per bulan & tahun sebagai file Excel
++    public function exportExcel(Request $request)
++    {
++        $bulan = (int) $request->input('bulan', date('n'));
++        $tahun = (int) $request->input('tahun', date('Y'));
++
++        if ($bulan < 1 || $bulan > 12) {
++            abort(422, 'Bulan tidak valid');
++        }
+ 
+-        return view('bonus', compact('bonuses', 'pengaturan'));
++        return Excel::download(new BonusExport($bulan, $tahun), "Bonus_Berita_{$bulan}_{$tahun}.xlsx");
+     }
+ 
+     // Menyimpan pengaturan dari Modal Alpine.js via Fetch API
+diff --git a/resources/views/bonus.blade.php b/resources/views/bonus.blade.php
+index 884d2f9..b562a40 100644
+--- a/resources/views/bonus.blade.php
++++ b/resources/views/bonus.blade.php
+@@ -45,6 +45,13 @@ class="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-md text-sm
+                         @endforeach
+                     </select>
+ 
++                    <!-- Filter Tahun -->
++                    <select id="filter-tahun" class="bg-white border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:border-gray-400">
++                        @foreach($daftarTahun as $th)
++                            <option value="{{ $th }}" {{ (int) $tahun === (int) $th ? 'selected' : '' }}>{{ $th }}</option>
++                        @endforeach
++                    </select>
++
+                     <!-- Tombol Pengaturan (Trigger Modal) -->
+                     <button @click="openModal = true" type="button" class="bg-white border border-gray-300 px-3 py-2 rounded-md text-gray-600 hover:bg-gray-50 transition">
+                         <i class="fas fa-cog"></i>
+@@ -114,7 +121,7 @@ class="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-md text-sm
+                         @endif
+ 
+                                                 <!-- Tombol Export ke Excel -->
+-                        <a href="/bonus/export?bulan={{ request('bulan', date('m')) }}" class="bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-4 py-2 rounded flex items-center space-x-1.5 transition">
++                        <a href="/bonus/export?bulan={{ request('bulan', date('n')) }}&tahun={{ $tahun }}" class="bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-4 py-2 rounded flex items-center space-x-1.5 transition">
+     <i class="fas fa-file-excel"></i> <span>Export ke Excel</span>
+ </a>
+                     </div>
+@@ -175,6 +182,14 @@ class="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-md text-sm
+             window.location.href = url.toString();
+         });
+ 
++        // 1b. Filter Tahun (sama seperti bulan)
++        document.getElementById('filter-tahun').addEventListener('change', function() {
++            let url = new URL(window.location.href);
++            url.searchParams.set('tahun', this.value);
++            url.searchParams.delete('page');
++            window.location.href = url.toString();
++        });
++
+         // 2. Fitur Search Berfungsi (Mencari saat menekan tombol Enter)
+         document.getElementById('search-input').addEventListener('keypress', function(e) {
+             if (e.key === 'Enter') {

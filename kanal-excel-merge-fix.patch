@@ -1,0 +1,22 @@
+diff --git a/resources/views/exports/bonus.blade.php b/resources/views/exports/bonus.blade.php
+index 09baeb2..5a8e57d 100644
+--- a/resources/views/exports/bonus.blade.php
++++ b/resources/views/exports/bonus.blade.php
+@@ -7,9 +7,15 @@
+         <td></td>
+         <td></td>
+     </tr>
+-    <!-- Baris 2: Kosong (Karena di-merge dengan baris 1 di PhpSpreadsheet) -->
++    <!-- Baris 2: Kosong (di-merge dengan baris 1 lewat styles() di BonusExport).
++         Jangan pakai colspan di sini: akan membuat merge A2:E2 yang bertumpuk dengan A1:E2
++         sehingga Excel menampilkan "We found a problem with some content". -->
+     <tr>
+-        <td colspan="5"></td>
++        <td></td>
++        <td></td>
++        <td></td>
++        <td></td>
++        <td></td>
+     </tr>
+ 
+     <!-- Baris 3: Header Tabel -->
