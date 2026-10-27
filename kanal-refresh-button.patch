@@ -1,0 +1,207 @@
+diff --git a/app/Console/Commands/UpdateBeritaTerbaru.php b/app/Console/Commands/UpdateBeritaTerbaru.php
+index ba2a14f..f29338c 100644
+--- a/app/Console/Commands/UpdateBeritaTerbaru.php
++++ b/app/Console/Commands/UpdateBeritaTerbaru.php
+@@ -50,6 +50,8 @@ public function handle()
+                 }
+ 
+                 // 3. Simpan Artikel (Gunakan wasRecentlyCreated untuk mengecek apakah ini berita baru)
++                // 'keterangan' sengaja TIDAK ikut di updateOrCreate: kolom itu bisa diisi manual
++                // lewat halaman Berita, dan tidak boleh tertimpa setiap kali sinkronisasi jalan.
+                 $artikel = Artikel::updateOrCreate(
+                     ['link' => $post['link']],
+                     [
+@@ -58,11 +60,11 @@ public function handle()
+                         'kategori_id'    => $kategoriId,
+                         'wartawan_id'    => $wartawan->id,
+                         'tanggal_terbit' => date('Y-m-d H:i:s', strtotime($post['date'])),
+-                        'keterangan'     => 'Update Otomatis',
+                     ]
+                 );
+ 
+                 if ($artikel->wasRecentlyCreated) {
++                    $artikel->update(['keterangan' => 'Update Otomatis']);
+                     $countBaru++;
+                 }
+             }
+diff --git a/app/Http/Controllers/Api/V1/Admin/RefreshController.php b/app/Http/Controllers/Api/V1/Admin/RefreshController.php
+new file mode 100644
+index 0000000..c215e04
+--- /dev/null
++++ b/app/Http/Controllers/Api/V1/Admin/RefreshController.php
+@@ -0,0 +1,83 @@
++<?php
++
++namespace App\Http\Controllers\Api\V1\Admin;
++
++use App\Http\Controllers\Controller;
++use Illuminate\Http\JsonResponse;
++use Illuminate\Support\Facades\Artisan;
++use Illuminate\Support\Facades\Cache;
++use Illuminate\Support\Facades\Log;
++
++class RefreshController extends Controller
++{
++    /**
++     * Tombol "Refresh Data" di halaman Bonus.
++     * Menjalankan tiga langkah yang sama dengan jadwal otomatis, khusus bulan berjalan:
++     *   1. update:berita      -> ambil 100 berita terbaru dari WordPress
++     *   2. views:sync         -> perbarui views artikel sejak tanggal 1 bulan ini
++     *   3. bonus:calculate    -> hitung ulang bonus bulan ini
++     */
++    public function refresh(): JsonResponse
++    {
++        // Cegah dua refresh berjalan bersamaan (mis. tombol diklik dua kali / dua admin)
++        $lock = Cache::lock('refresh-data', 300);
++
++        if (! $lock->get()) {
++            return response()->json([
++                'status'  => 'error',
++                'message' => 'Refresh sedang berjalan. Coba lagi beberapa saat lagi.',
++            ], 409);
++        }
++
++        try {
++            @set_time_limit(300);
++            ignore_user_abort(true);
++
++            $now   = now();
++            $bulan = $now->month;
++            $tahun = $now->year;
++            // Mulai dari tanggal 1 bulan ini (hari ke-1 tetap mengambil 1 hari terakhir)
++            $days  = max(1, $now->day - 1);
++
++            $hasil = [];
++            $gagal = false;
++
++            foreach ([
++                'berita' => ['update:berita', []],
++                'views'  => ['views:sync', ['--days' => $days]],
++                'bonus'  => ['bonus:calculate', ['--bulan' => $bulan, '--tahun' => $tahun]],
++            ] as $kunci => [$perintah, $opsi]) {
++                $kode = Artisan::call($perintah, $opsi);
++                $hasil[$kunci] = $this->barisAkhir(Artisan::output());
++
++                if ($kode !== 0) {
++                    $gagal = true;
++                    break; // jangan lanjut menghitung bonus dari data yang gagal diambil
++                }
++            }
++
++            return response()->json([
++                'status'  => $gagal ? 'error' : 'success',
++                'message' => implode("\n", array_filter($hasil)),
++                'details' => $hasil,
++            ], $gagal ? 502 : 200);
++        } catch (\Throwable $e) {
++            Log::error('Refresh data gagal: ' . $e->getMessage());
++
++            return response()->json([
++                'status'  => 'error',
++                'message' => 'Refresh gagal: ' . $e->getMessage(),
++            ], 500);
++        } finally {
++            $lock->release();
++        }
++    }
++
++    /** Ambil baris hasil terakhir dari output command (baris ringkasan). */
++    private function barisAkhir(string $output): string
++    {
++        $baris = array_values(array_filter(array_map('trim', explode("\n", $output))));
++
++        return $baris ? end($baris) : '';
++    }
++}
+diff --git a/resources/views/bonus.blade.php b/resources/views/bonus.blade.php
+index b562a40..026c53f 100644
+--- a/resources/views/bonus.blade.php
++++ b/resources/views/bonus.blade.php
+@@ -120,7 +120,13 @@ class="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-md text-sm
+                             </div>
+                         @endif
+ 
+-                                                <!-- Tombol Export ke Excel -->
++                        <!-- Tombol Refresh Data (ambil data terbaru bulan ini tanpa command) -->
++                        <button type="button" id="btn-refresh" title="Ambil berita & views terbaru lalu hitung ulang bonus bulan ini"
++                                class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-medium px-4 py-2 rounded flex items-center space-x-1.5 transition disabled:opacity-60 disabled:cursor-not-allowed">
++                            <i class="fas fa-sync-alt"></i> <span>Refresh Data</span>
++                        </button>
++
++                        <!-- Tombol Export ke Excel -->
+                         <a href="/bonus/export?bulan={{ request('bulan', date('n')) }}&tahun={{ $tahun }}" class="bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-4 py-2 rounded flex items-center space-x-1.5 transition">
+     <i class="fas fa-file-excel"></i> <span>Export ke Excel</span>
+ </a>
+@@ -182,6 +188,50 @@ class="w-full pl-9 pr-4 py-2 bg-white border border-gray-300 rounded-md text-sm
+             window.location.href = url.toString();
+         });
+ 
++        // 1a. Tombol Refresh Data: ambil data terbaru bulan berjalan, hitung ulang bonus, lalu muat ulang halaman
++        document.getElementById('btn-refresh').addEventListener('click', async function () {
++            const token = localStorage.getItem('access_token');
++            if (!token) { window.location.href = '/login'; return; }
++
++            if (!confirm('Ambil data terbaru dari website untuk bulan ini dan hitung ulang bonus?\nProses bisa memakan waktu sampai beberapa menit.')) return;
++
++            const btn = this;
++            const label = btn.querySelector('span');
++            const icon = btn.querySelector('i');
++            btn.disabled = true;
++            label.textContent = 'Memperbarui...';
++            icon.classList.add('fa-spin');
++
++            try {
++                const res = await fetch('/api/v1/admin/refresh-data', {
++                    method: 'POST',
++                    headers: { 'Accept': 'application/json', 'Authorization': 'Bearer ' + token }
++                });
++
++                if (res.status === 401) {
++                    localStorage.removeItem('access_token');
++                    window.location.href = '/login';
++                    return;
++                }
++
++                const data = await res.json().catch(() => ({}));
++
++                if (res.ok && data.status === 'success') {
++                    alert('Data berhasil diperbarui:\n\n' + data.message);
++                    location.reload();
++                } else {
++                    alert(data.message || 'Gagal memperbarui data. Coba lagi.');
++                }
++            } catch (err) {
++                console.error(err);
++                alert('Tidak dapat menghubungi server. Periksa koneksi lalu coba lagi.');
++            } finally {
++                btn.disabled = false;
++                label.textContent = 'Refresh Data';
++                icon.classList.remove('fa-spin');
++            }
++        });
++
+         // 1b. Filter Tahun (sama seperti bulan)
+         document.getElementById('filter-tahun').addEventListener('change', function() {
+             let url = new URL(window.location.href);
+diff --git a/routes/api.php b/routes/api.php
+index d864568..d30f86e 100644
+--- a/routes/api.php
++++ b/routes/api.php
+@@ -6,6 +6,7 @@
+ use App\Http\Controllers\Api\V1\Admin\DashboardController;
+ use App\Http\Controllers\Api\V1\Admin\BonusController;
+ use App\Http\Controllers\Api\V1\Admin\ReportController;
++use App\Http\Controllers\Api\V1\Admin\RefreshController;
+ use App\Http\Controllers\Api\V1\Admin\AuthController;
+ use App\Http\Controllers\Api\V1\Admin\SettingBonusController;
+ use App\Http\Controllers\Api\V1\KategoriController;
+@@ -44,6 +45,9 @@
+             Route::get('/dashboard', [DashboardController::class, 'index']);
+             Route::get('/bonus', [BonusController::class, 'index']);
+             Route::get('/bonus/export', [ReportController::class, 'export']);
++
++            // Tombol "Refresh Data" di halaman Bonus (maks 6x per menit per pengguna)
++            Route::post('/refresh-data', [RefreshController::class, 'refresh'])->middleware('throttle:6,1');
+         });
+ 
+         // --- ROUTE DEV 2 (DATA MODULE) ---

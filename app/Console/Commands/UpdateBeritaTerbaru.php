@@ -50,6 +50,8 @@ class UpdateBeritaTerbaru extends Command
                 }
 
                 // 3. Simpan Artikel (Gunakan wasRecentlyCreated untuk mengecek apakah ini berita baru)
+                // 'keterangan' sengaja TIDAK ikut di updateOrCreate: kolom itu bisa diisi manual
+                // lewat halaman Berita, dan tidak boleh tertimpa setiap kali sinkronisasi jalan.
                 $artikel = Artikel::updateOrCreate(
                     ['link' => $post['link']],
                     [
@@ -58,11 +60,11 @@ class UpdateBeritaTerbaru extends Command
                         'kategori_id'    => $kategoriId,
                         'wartawan_id'    => $wartawan->id,
                         'tanggal_terbit' => date('Y-m-d H:i:s', strtotime($post['date'])),
-                        'keterangan'     => 'Update Otomatis',
                     ]
                 );
 
                 if ($artikel->wasRecentlyCreated) {
+                    $artikel->update(['keterangan' => 'Update Otomatis']);
                     $countBaru++;
                 }
             }

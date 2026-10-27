@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\Admin\HealthCheckController;
 use App\Http\Controllers\Api\V1\Admin\DashboardController;
 use App\Http\Controllers\Api\V1\Admin\BonusController;
 use App\Http\Controllers\Api\V1\Admin\ReportController;
+use App\Http\Controllers\Api\V1\Admin\RefreshController;
 use App\Http\Controllers\Api\V1\Admin\AuthController;
 use App\Http\Controllers\Api\V1\Admin\SettingBonusController;
 use App\Http\Controllers\Api\V1\KategoriController;
@@ -44,6 +45,9 @@ Route::prefix('v1')->group(function () {
             Route::get('/dashboard', [DashboardController::class, 'index']);
             Route::get('/bonus', [BonusController::class, 'index']);
             Route::get('/bonus/export', [ReportController::class, 'export']);
+
+            // Tombol "Refresh Data" di halaman Bonus (maks 6x per menit per pengguna)
+            Route::post('/refresh-data', [RefreshController::class, 'refresh'])->middleware('throttle:6,1');
         });
 
         // --- ROUTE DEV 2 (DATA MODULE) ---

@@ -120,7 +120,13 @@
                             </div>
                         @endif
 
-                                                <!-- Tombol Export ke Excel -->
+                        <!-- Tombol Refresh Data (ambil data terbaru bulan ini tanpa command) -->
+                        <button type="button" id="btn-refresh" title="Ambil berita & views terbaru lalu hitung ulang bonus bulan ini"
+                                class="bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 text-xs font-medium px-4 py-2 rounded flex items-center space-x-1.5 transition disabled:opacity-60 disabled:cursor-not-allowed">
+                            <i class="fas fa-sync-alt"></i> <span>Refresh Data</span>
+                        </button>
+
+                        <!-- Tombol Export ke Excel -->
                         <a href="/bonus/export?bulan={{ request('bulan', date('n')) }}&tahun={{ $tahun }}" class="bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-4 py-2 rounded flex items-center space-x-1.5 transition">
     <i class="fas fa-file-excel"></i> <span>Export ke Excel</span>
 </a>
@@ -180,6 +186,50 @@
             let url = new URL(window.location.href);
             url.searchParams.set('bulan', selectedMonth);
             window.location.href = url.toString();
+        });
+
+        // 1a. Tombol Refresh Data: ambil data terbaru bulan berjalan, hitung ulang bonus, lalu muat ulang halaman
+        document.getElementById('btn-refresh').addEventListener('click', async function () {
+            const token = localStorage.getItem('access_token');
+            if (!token) { window.location.href = '/login'; return; }
+
+            if (!confirm('Ambil data terbaru dari website untuk bulan ini dan hitung ulang bonus?\nProses bisa memakan waktu sampai beberapa menit.')) return;
+
+            const btn = this;
+            const label = btn.querySelector('span');
+            const icon = btn.querySelector('i');
+            btn.disabled = true;
+            label.textContent = 'Memperbarui...';
+            icon.classList.add('fa-spin');
+
+            try {
+                const res = await fetch('/api/v1/admin/refresh-data', {
+                    method: 'POST',
+                    headers: { 'Accept': 'application/json', 'Authorization': 'Bearer ' + token }
+                });
+
+                if (res.status === 401) {
+                    localStorage.removeItem('access_token');
+                    window.location.href = '/login';
+                    return;
+                }
+
+                const data = await res.json().catch(() => ({}));
+
+                if (res.ok && data.status === 'success') {
+                    alert('Data berhasil diperbarui:\n\n' + data.message);
+                    location.reload();
+                } else {
+                    alert(data.message || 'Gagal memperbarui data. Coba lagi.');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Tidak dapat menghubungi server. Periksa koneksi lalu coba lagi.');
+            } finally {
+                btn.disabled = false;
+                label.textContent = 'Refresh Data';
+                icon.classList.remove('fa-spin');
+            }
         });
 
         // 1b. Filter Tahun (sama seperti bulan)
